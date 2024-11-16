@@ -15,16 +15,24 @@ MODEL_PATH = "classify_model.h5"
 def download_model():
     if not os.path.exists(MODEL_PATH):  # Baixa o modelo apenas se não estiver no diretório
         print("Baixando o modelo do Google Drive...")
-        gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
-        print("Download concluído.")
+        try:
+            gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
+            print("Download concluído.")
+        except Exception as e:
+            print(f"Erro ao baixar o modelo: {str(e)}")
+            raise
 
 # Baixar o modelo
 download_model()
 
 # Carregar o modelo
-print("Carregando o modelo...")
-model = load_model(MODEL_PATH)
-print("Modelo carregado com sucesso.")
+try:
+    print("Carregando o modelo...")
+    model = load_model(MODEL_PATH)
+    print("Modelo carregado com sucesso.")
+except Exception as e:
+    print(f"Erro ao carregar o modelo: {str(e)}")
+    raise
 
 # Rota de predição
 @app.route("/predict", methods=["POST"])
