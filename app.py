@@ -11,6 +11,8 @@ import gdown
 # Inicializar o Flask
 app = Flask(__name__)
 
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+
 # Caminho para o modelo e configuração
 MODEL_URL = "https://drive.google.com/uc?id=11H8P8NhajaYk70-OtAfguLc0oQXv_ZV_"
 MODEL_PATH = "classify_model.h5"
