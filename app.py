@@ -1,33 +1,58 @@
+import os
+import requests
 from flask import Flask, request, jsonify
-from tensorflow import keras
+from tensorflow.keras.models import load_model
 import numpy as np
-from PIL import Image
-
-# Carregar o modelo
-best_class_model = keras.models.load_model('/classify_model (1).h5')
 
 app = Flask(__name__)
 
-@app.route('/predict', methods=['POST'])
+# Função para baixar o modelo do Google Drive
+def download_model_from_drive(file_id, destination):
+    url = f"https://drive.google.com/file/d/11H8P8NhajaYk70-OtAfguLc0oQXv_ZV_/view?usp=sharing"
+    response = requests.get(url, stream=True)
+    
+    if response.status_code == 200:
+        with open(destination, "wb") as f:
+            f.write(response.content)
+        print(f"Modelo salvo como {destination}")
+    else:
+        print("Erro ao baixar o modelo!")
+        raise Exception("Falha no download do modelo.")
+
+# ID do arquivo no Google Drive (substitua pelo seu)
+FILE_ID = "1ABCDEFGH"  # Substitua pelo ID do seu arquivo
+MODEL_PATH = "classify_model (1).h5"
+
+# Baixar o modelo se ele não existir localmente
+if not os.path.exists(MODEL_PATH):
+    print("Baixando o modelo...")
+    download_model_from_drive(FILE_ID, MODEL_PATH)
+
+# Carregar o modelo
+print("Carregando o modelo...")
+model = load_model(MODEL_PATH)
+print("Modelo carregado com sucesso!")
+
+# Rota principal para predições
+@app.route("/predict", methods=["POST"])
 def predict():
-    if 'file' not in request.files:
-        return jsonify({'error': 'Nenhum arquivo encontrado'}), 400
-    
-    file = request.files['file']
-    
-    # Processar a imagem recebida
-    image = Image.open(file)
-    image = image.resize((299, 299))  # Redimensionar a imagem
-    image = np.array(image) / 255.0  # Normalizar
-    image = np.expand_dims(image, axis=0)  # Adicionar dimensão extra para o modelo
+    try:
+        # Obter os dados enviados pelo cliente
+        data = request.json
+        input_data = np.array(data["inputs"])  # Espera uma lista de listas
+        
+        # Realizar a predição
+        predictions = model.predict(input_data)
+        result = predictions.tolist()  # Converter para lista para enviar como JSON
 
-    # Fazer a previsão
-    prediction = best_class_model.predict(image)
-    
-    # Resultado da previsão
-    result = 'Carro Em Bom Estado' if prediction > 0.2 else 'Carro Batido'
-    
-    return jsonify({'prediction': result})
+        return jsonify({"predictions": result})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
 
-if __name__ == '__main__':
-    app.run(debug=True)
+# Rota de saúde (para verificar se a API está funcionando)
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"})
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
