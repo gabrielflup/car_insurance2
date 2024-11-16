@@ -2,10 +2,19 @@ import os
 from flask import Flask, request, jsonify
 from tensorflow.keras.models import load_model
 from tensorflow.keras.utils import custom_object_scope
+from tensorflow.keras.layers import Layer
 from PIL import Image
 import numpy as np
-import cv2
 import gdown
+
+# Definição da camada personalizada
+class CustomScaleLayer(Layer):
+    def __init__(self, scale=1.0, **kwargs):
+        super(CustomScaleLayer, self).__init__(**kwargs)
+        self.scale = scale
+
+    def call(self, inputs):
+        return inputs * self.scale
 
 # Caminho para o modelo
 MODEL_URL = "https://drive.google.com/uc?id=11H8P8NhajaYk70-OtAfguLc0oQXv_ZV_"
