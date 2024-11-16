@@ -9,7 +9,7 @@ app = Flask(__name__)
 
 # URL do arquivo no Google Drive
 MODEL_URL = "https://drive.google.com/uc?id=11H8P8NhajaYk70-OtAfguLc0oQXv_ZV_"
-MODEL_PATH = "classify_model.h5"
+MODEL_PATH = "classify_model (1).h5"
 
 # Função para baixar o modelo do Google Drive
 def download_model():
