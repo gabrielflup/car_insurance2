@@ -1,86 +1,80 @@
-import os
 from flask import Flask, request, jsonify
-from tensorflow.keras.models import load_model
-from tensorflow.keras.utils import custom_object_scope
-from tensorflow.keras.layers import Layer
 import tensorflow as tf
+from tensorflow.keras.applications import InceptionResNetV2
+from tensorflow.keras.models import Sequential, load_model
+from tensorflow.keras.layers import Dense, Dropout, BatchNormalization, GlobalAveragePooling2D
 from PIL import Image
 import numpy as np
+import os
 import gdown
 
-# Definição da camada personalizada
-class CustomScaleLayer(Layer):
-    def __init__(self, scale=1.0, **kwargs):
-        super(CustomScaleLayer, self).__init__(**kwargs)
-        self.scale = scale
+# Inicializar o Flask
+app = Flask(__name__)
 
-    def call(self, inputs):
-        inputs = tf.convert_to_tensor(inputs)  # Garante que os inputs sejam tensores
-        return inputs * self.scale
-
-# Caminho para o modelo
+# Caminho para o modelo e configuração
 MODEL_URL = "https://drive.google.com/uc?id=11H8P8NhajaYk70-OtAfguLc0oQXv_ZV_"
 MODEL_PATH = "classify_model.h5"
 
-# Função para baixar o modelo
+# Função para baixar o modelo do Google Drive
 def download_model():
     if not os.path.exists(MODEL_PATH):  # Baixa o modelo apenas se não estiver no diretório
         print("Baixando o modelo do Google Drive...")
-        try:
-            gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
-            print("Download concluído.")
-        except Exception as e:
-            print(f"Erro ao baixar o modelo: {str(e)}")
-            raise
-
-# Função para carregar o modelo com a camada personalizada
-def load_custom_model():
-    try:
-        with custom_object_scope({"CustomScaleLayer": CustomScaleLayer}):  # Registrar camada personalizada
-            model = load_model(MODEL_PATH)
-        return model
-    except Exception as e:
-        print(f"Erro ao carregar o modelo: {str(e)}")
-        raise
+        gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
+        print("Download concluído.")
 
 # Baixar o modelo
 download_model()
 
-# Carregar o modelo com a camada personalizada registrada
-model = load_custom_model()
+# Configuração do modelo
+print("Carregando o modelo...")
+base_model = InceptionResNetV2(include_top=False, input_shape=(299, 299, 3))
+classification_model = Sequential([
+    base_model,
+    GlobalAveragePooling2D(),
+    Dense(128, activation='relu'),
+    BatchNormalization(),
+    Dropout(0.2),
+    Dense(1, activation='sigmoid')
+])
 
-# Iniciar a aplicação Flask
-app = Flask(__name__)
+# Carregar os pesos
+classification_model.load_weights(MODEL_PATH)
 
-@app.route("/predict", methods=["POST"])
+# Função para pré-processar imagens
+def preprocess_image(image):
+    image = image.resize((299, 299))  # Redimensionar para o tamanho esperado pelo modelo
+    image = np.array(image) / 255.0  # Normalizar os valores dos pixels
+    return np.expand_dims(image, axis=0)
+
+# Rota para previsão
+@app.route('/predict', methods=['POST'])
 def predict():
     try:
-        if "image" not in request.files:
-            return jsonify({"error": "Nenhuma imagem enviada"}), 400
-        
-        # Ler a imagem enviada
-        image = request.files["image"]
-        image = Image.open(image).convert("RGB")  # Converte para RGB
-        image = image.resize((299, 299))  # Ajuste de tamanho conforme esperado pelo modelo
-        
-        # Pré-processamento da imagem
-        image = np.array(image)  # Converter a imagem em um array numpy
-        image = image / 255.0  # Normalizar os valores dos pixels para o intervalo [0, 1]
-        image = np.expand_dims(image, axis=0)  # Adicionar uma dimensão extra para corresponder ao formato de entrada do modelo
+        # Verificar se o arquivo foi enviado
+        if 'file' not in request.files:
+            return jsonify({"error": "Nenhum arquivo enviado"}), 400
 
-        # Fazer a previsão
-        prediction = model.predict(image)
-        
-        # Interpretação do resultado
+        file = request.files['file']
+
+        # Abrir e pré-processar a imagem
+        image = Image.open(file)
+        image = preprocess_image(image)
+
+        # Fazer previsão
+        prediction = classification_model.predict(image)[0][0]
+
+        # Decisão com base na predição
         result = "Carro Em Bom Estado" if prediction > 0.2 else "Carro Batido"
-        
-        return jsonify({"prediction": result})
+        return jsonify({"prediction": float(prediction), "result": result})
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": str(e)}), 500
 
-@app.route("/health", methods=["GET"])
+# Rota de saúde (opcional, útil para monitoramento no Render)
+@app.route('/health', methods=['GET'])
 def health():
-    return jsonify({"status": "ok"})
+    return jsonify({"status": "ok"}), 200
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+# Rodar o aplicativo no Render
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
