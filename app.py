@@ -2,6 +2,8 @@ import os
 import requests
 from flask import Flask, request, jsonify
 from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing.image import img_to_array
+from PIL import Image
 import numpy as np
 
 app = Flask(__name__)
@@ -37,12 +39,21 @@ print("Modelo carregado com sucesso!")
 @app.route("/predict", methods=["POST"])
 def predict():
     try:
-        # Obter os dados enviados pelo cliente
-        data = request.json
-        input_data = np.array(data["inputs"])  # Espera uma lista de listas
+        # Verificar se o arquivo foi enviado
+        if 'image' not in request.files:
+            return jsonify({"error": "Nenhuma imagem enviada"}), 400
         
+        # Ler a imagem enviada
+        image = request.files["image"]
+        image = Image.open(image).convert("RGB")  # Converte para RGB caso seja diferente
+
+        # Redimensionar a imagem para o tamanho esperado pelo modelo (ajuste conforme necessário)
+        image = image.resize((224, 224))  # Substitua (224, 224) pelo tamanho correto do modelo
+        image = img_to_array(image) / 255.0  # Normalizar os valores para [0, 1]
+        image = np.expand_dims(image, axis=0)  # Adicionar uma dimensão para batch
+
         # Realizar a predição
-        predictions = model.predict(input_data)
+        predictions = model.predict(image)
         result = predictions.tolist()  # Converter para lista para enviar como JSON
 
         return jsonify({"predictions": result})
