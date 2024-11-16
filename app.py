@@ -1,69 +1,53 @@
-import os
-import requests
 from flask import Flask, request, jsonify
-from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing.image import img_to_array
+from keras.models import load_model
 from PIL import Image
 import numpy as np
+import gdown
+import os
 
 app = Flask(__name__)
 
-# Função para baixar o modelo do Google Drive
-def download_model_from_drive(file_id, destination):
-    url = f"https://drive.google.com/file/d/11H8P8NhajaYk70-OtAfguLc0oQXv_ZV_/view?usp=sharing"
-    response = requests.get(url, stream=True)
-    
-    if response.status_code == 200:
-        with open(destination, "wb") as f:
-            f.write(response.content)
-        print(f"Modelo salvo como {destination}")
-    else:
-        print("Erro ao baixar o modelo!")
-        raise Exception("Falha no download do modelo.")
+# URL do arquivo no Google Drive
+MODEL_URL = "https://drive.google.com/uc?id=11H8P8NhajaYk70-OtAfguLc0oQXv_ZV_"
+MODEL_PATH = "classify_model.h5"
 
-# ID do arquivo no Google Drive (substitua pelo seu)
-FILE_ID = "1ABCDEFGH"  # Substitua pelo ID do seu arquivo
-MODEL_PATH = "classify_model (1).h5"
+# Função para baixar o modelo
+def download_model():
+    if not os.path.exists(MODEL_PATH):  # Baixa o modelo apenas se não estiver no diretório
+        print("Baixando o modelo do Google Drive...")
+        gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
+        print("Download concluído.")
 
-# Baixar o modelo se ele não existir localmente
-if not os.path.exists(MODEL_PATH):
-    print("Baixando o modelo...")
-    download_model_from_drive(FILE_ID, MODEL_PATH)
+# Baixe o modelo
+download_model()
 
 # Carregar o modelo
 print("Carregando o modelo...")
 model = load_model(MODEL_PATH)
-print("Modelo carregado com sucesso!")
+print("Modelo carregado com sucesso.")
 
-# Rota principal para predições
-@app.route("/predict", methods=["POST"])
+@app.route('/predict', methods=['POST'])
 def predict():
     try:
         # Verificar se o arquivo foi enviado
-        if 'image' not in request.files:
-            return jsonify({"error": "Nenhuma imagem enviada"}), 400
+        if 'file' not in request.files:
+            return jsonify({"error": "Nenhuma imagem enviada."}), 400
         
-        # Ler a imagem enviada
-        image = request.files["image"]
-        image = Image.open(image).convert("RGB")  # Converte para RGB caso seja diferente
+        file = request.files['file']
 
-        # Redimensionar a imagem para o tamanho esperado pelo modelo (ajuste conforme necessário)
-        image = image.resize((224, 224))  # Substitua (224, 224) pelo tamanho correto do modelo
-        image = img_to_array(image) / 255.0  # Normalizar os valores para [0, 1]
-        image = np.expand_dims(image, axis=0)  # Adicionar uma dimensão para batch
+        # Abrir a imagem
+        img = Image.open(file).resize((224, 224))  # Certifique-se de usar o tamanho esperado pelo modelo
+        img_array = np.array(img) / 255.0  # Normalização
+        img_array = np.expand_dims(img_array, axis=0)  # Adicionar dimensão batch
 
-        # Realizar a predição
-        predictions = model.predict(image)
-        result = predictions.tolist()  # Converter para lista para enviar como JSON
+        # Fazer a predição
+        prediction = model.predict(img_array)
+        result = prediction.tolist()
 
-        return jsonify({"predictions": result})
+        return jsonify({"prediction": result})
+
     except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        return jsonify({"error": str(e)}), 500
 
-# Rota de saúde (para verificar se a API está funcionando)
-@app.route("/health", methods=["GET"])
-def health():
-    return jsonify({"status": "ok"})
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+if __name__ == '__main__':
+    app.run(debug=True)
