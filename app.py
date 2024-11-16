@@ -3,6 +3,7 @@ from flask import Flask, request, jsonify
 from tensorflow.keras.models import load_model
 from tensorflow.keras.utils import custom_object_scope
 from tensorflow.keras.layers import Layer
+import tensorflow as tf
 from PIL import Image
 import numpy as np
 import gdown
@@ -14,6 +15,7 @@ class CustomScaleLayer(Layer):
         self.scale = scale
 
     def call(self, inputs):
+        inputs = tf.convert_to_tensor(inputs)  # Garante que os inputs sejam tensores
         return inputs * self.scale
 
 # Caminho para o modelo
