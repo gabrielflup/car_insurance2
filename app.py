@@ -14,7 +14,7 @@ import uvicorn
 # Função para baixar o modelo do Google Drive
 def download_file_from_google_drive(file_id, destination):
     #URL = f"https://drive.google.com/uc?id={file_id}"
-    URL = https://drive.google.com/file/d/11H8P8NhajaYk70-OtAfguLc0oQXv_ZV_/view?usp=sharing
+    URL = "https://drive.google.com/file/d/11H8P8NhajaYk70-OtAfguLc0oQXv_ZV_/view?usp=sharing"
     response = requests.get(URL, stream=True)
     with open(destination, "wb") as f:
         for chunk in response.iter_content(chunk_size=1024):
