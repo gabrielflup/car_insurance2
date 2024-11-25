@@ -1,82 +1,103 @@
-from flask import Flask, request, jsonify
-import tensorflow as tf
+from fastapi import FastAPI, File, UploadFile
+from fastapi.responses import HTMLResponse
+from fastapi.middleware.cors import CORSMiddleware
+from tensorflow.keras.models import load_model
 from tensorflow.keras.applications import InceptionResNetV2
-from tensorflow.keras.models import Sequential, load_model
-from tensorflow.keras.layers import Dense, Dropout, BatchNormalization, GlobalAveragePooling2D
+from tensorflow.keras.layers import GlobalAveragePooling2D, Dense, BatchNormalization, Dropout
 from PIL import Image
 import numpy as np
 import os
-import gdown
-
-# Inicializar o Flask
-app = Flask(__name__)
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
-
-# Caminho para o modelo e configuração
-MODEL_URL = "https://drive.google.com/uc?id=11H8P8NhajaYk70-OtAfguLc0oQXv_ZV_"
-MODEL_PATH = "classify_model.h5"
+import requests
+import tensorflow as tf
+import uvicorn
 
 # Função para baixar o modelo do Google Drive
-def download_model():
-    if not os.path.exists(MODEL_PATH):  # Baixa o modelo apenas se não estiver no diretório
-        print("Baixando o modelo do Google Drive...")
-        gdown.download(MODEL_URL, MODEL_PATH, quiet=False)
-        print("Download concluído.")
+def download_file_from_google_drive(file_id, destination):
+    URL = f"https://drive.google.com/uc?id={file_id}"
+    response = requests.get(URL, stream=True)
+    with open(destination, "wb") as f:
+        for chunk in response.iter_content(chunk_size=1024):
+            if chunk:
+                f.write(chunk)
+    print(f"Modelo baixado para: {destination}")
 
-# Baixar o modelo
-download_model()
+# Função para processar a imagem
+def process_image(image_path):
+    image = Image.open(image_path)
+    image = image.resize((299, 299))  # O InceptionResNetV2 requer imagens 299x299
+    image = np.array(image) / 299.0  # Normaliza a imagem
+    image = np.expand_dims(image, axis=0)  # Expande para o formato batch
+    return image
 
-# Configuração do modelo
-print("Carregando o modelo...")
+# ID do arquivo no Google Drive
+MODEL_ID = "11H8P8NhajaYk70-OtAfguLc0oQXv_ZV_"  # ID do arquivo do Google Drive
+MODEL_PATH = "classify_model.h5"  # Caminho local para salvar o modelo
+
+# Baixar o modelo ao iniciar
+download_file_from_google_drive(MODEL_ID, MODEL_PATH)
+
+# Criar o modelo com o InceptionResNetV2
 base_model = InceptionResNetV2(include_top=False, input_shape=(299, 299, 3))
-classification_model = Sequential([
+classification_model = tf.keras.Sequential([
     base_model,
     GlobalAveragePooling2D(),
     Dense(128, activation='relu'),
     BatchNormalization(),
     Dropout(0.2),
-    Dense(1, activation='sigmoid')
+    Dense(1, activation='sigmoid')  # Usando uma saída binária
 ])
 
-# Carregar os pesos
+# Carregar os pesos do modelo
 classification_model.load_weights(MODEL_PATH)
 
-# Função para pré-processar imagens
-def preprocess_image(image):
-    image = image.resize((299, 299))  # Redimensionar para o tamanho esperado pelo modelo
-    image = np.array(image) / 255.0  # Normalizar os valores dos pixels
-    return np.expand_dims(image, axis=0)
+# Configuração do FastAPI
+app = FastAPI()
 
-# Rota para previsão
-@app.route('/predict', methods=['POST'])
-def predict():
+# Middleware para permitir acesso
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# Endpoint raiz com HTML para upload
+@app.get("/", response_class=HTMLResponse)
+async def main():
+    content = """
+    <html>
+        <head>
+            <title>Car Status Predictor</title>
+        </head>
+        <body>
+            <h1>Upload uma Imagem do Carro</h1>
+            <form action="/predict" method="post" enctype="multipart/form-data">
+                <input type="file" name="file" accept="image/*">
+                <input type="submit" value="Prever">
+            </form>
+        </body>
+    </html>
+    """
+    return content
+
+# Endpoint para predição
+@app.post("/predict")
+async def predict(file: UploadFile = File(...)):
     try:
-        # Verificar se o arquivo foi enviado
-        if 'file' not in request.files:
-            return jsonify({"error": "Nenhum arquivo enviado"}), 400
+        # Salvar o arquivo temporariamente
+        temp_file_path = "temp_image.jpg"
+        with open(temp_file_path, "wb") as temp_file:
+            temp_file.write(await file.read())
 
-        file = request.files['file']
+        # Processar e prever
+        image = process_image(temp_file_path)
+        prediction = classification_model.predict(image)
 
-        # Abrir e pré-processar a imagem
-        image = Image.open(file)
-        image = preprocess_image(image)
+        # Limpar o arquivo temporário
+        os.remove(temp_file_path)
 
-        # Fazer previsão
-        prediction = classification_model.predict(image)[0][0]
-
-        # Decisão com base na predição
-        result = "Carro Em Bom Estado" if prediction > 0.2 else "Carro Batido"
-        return jsonify({"prediction": float(prediction), "result": result})
+        # Resultado da predição
+        result = "Carro em bom estado" if prediction > 0.2 else "Carro batido"
+        return HTMLResponse(content=f"<h1>Predição: {result}</h1><p>Valor de confiança: {prediction[0][0]:.2f}</p>", status_code=200)
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return {"error": str(e)}
 
-# Rota de saúde (opcional, útil para monitoramento no Render)
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({"status": "ok"}), 200
-
-# Rodar o aplicativo no Render
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+# Rodar o servidor
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8000)
