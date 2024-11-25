@@ -10,6 +10,8 @@ import os
 import requests
 import tensorflow as tf
 import uvicorn
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # Suprime avisos e informações
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'false'  # Desativa configurações relacionadas a GPU
 
 # Função para baixar o modelo do Google Drive
 def download_file_from_google_drive(file_id, destination):
