@@ -100,4 +100,5 @@ async def predict(file: UploadFile = File(...)):
 
 # Rodar o servidor
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    port = int(os.getenv("PORT", 5000))  # Se a variável de ambiente PORT não estiver definida, use a porta 5000
+    uvicorn.run(app, host="0.0.0.0", port=port)
